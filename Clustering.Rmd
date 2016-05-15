@@ -1,0 +1,128 @@
+---
+title: "Clustering (example)"
+author: "Zanin Pavel"
+date: "May 15, 2016"
+output: html_document
+---
+
+[Link to project on GitHUB](https://github.com/Filareth2015/Cluster-Analysis)     
+[Link to project on RPub](http://rpubs.com/Zanin_Pavel/181052)
+
+## About    
+
+In this work we will show clustering the weather dataset from rattle (Williams, 2014).
+
+## Data processing  
+
+Loading necessary libraries:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+library(rattle) # Load weather dataset. Normalise names normVarNames().
+library(randomForest) # Impute missing using na.roughfix().
+library(ggplot2) # Visualise the data through plots.
+library(reshape2) # Reshape data for plotting.
+library(fpc) #  K-means with estimating k (we will calculate average silhouette width)  
+```
+
+Loading dataset (we need only first 1000 rows):
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+ds <- read.csv('weatherAUS.csv', nrows = 1000)        
+```
+
+Identify the dataset:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+names(ds) <- normVarNames(names(ds))
+vars <- names(ds)
+target <- "rain_tomorrow"
+risk <- "risk_mm"
+id <- c("date", "location")        
+```
+
+Ignore the IDs and the risk variable:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+ignore <- union(id, if (exists("risk")) risk)        
+```
+
+Ignore variables which are completely missing:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+mvc <- sapply(ds[vars], function(x) sum(is.na(x))) # Missing value count.
+mvn <- names(ds)[(which(mvc == nrow(ds)))] # Missing var names.
+ignore <- union(ignore, mvn)        
+```
+
+Initialise the variables:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+vars <- setdiff(vars, ignore)        
+```
+
+Defining numeric variables:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+inputc <- setdiff(vars, target)
+inputi <- sapply(inputc, function(x) which(x == names(ds)), USE.NAMES=FALSE)
+
+numi <- intersect(inputi, which(sapply(ds, is.numeric)))
+```
+
+Impute missing values:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+if (sum(is.na(ds[vars]))) ds[vars] <- na.roughfix(ds[vars])        
+```
+
+Show size and head of dataset:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+dim(ds)  
+
+head(ds)
+```
+
+## Clusterization
+
+The k-means algorithm is a traditional and widely used clustering algorithm.   
+The algorithm begins by specifying the number of clusters we are interested in - this is the k.
+Each of the k clusters is identified as the vector of the average (i.e., the mean) value of each
+of the variables for observations within a cluster. A random clustering is first constructed, the
+k means calculated, and then using the distance measure we gravitate each observation to its
+nearest mean. The means are then recalculated and the points re-gravitate. And so on until
+there is no change to the means.
+
+A unit of distance is different for differently measure variables. For example,
+one year of difference in age seems like it should be a larger difference than $1 difference in our
+income. A common approach is to rescale our data by subtracting the mean and dividing by
+the standard deviation. The result is that the mean for all variables is 0 and a unit of difference is one standard deviation.
+
+### Defining the number of clusters     
+
+For selecting k we will use Average Silhouette Width:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+nk <- 1:20
+model <- kmeansruns(scale(ds[numi]), krange=nk, criterion="asw")
+model$bestk
+```
+
+So, in our case k = 2 is the optimum choice.
+
+### Plot clusters
+
+Clusters centres:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE}
+model$centers
+```
+
+Show clusters:
+```{r, warning=FALSE, message = FALSE, echo=TRUE, cache=TRUE, fig.width = 10, fig.height = 6, fig.align="center"}
+nclust <- 2
+model <- m.kms <- kmeans(scale(ds[numi]), nclust)
+dscm <- melt(model$centers)
+names(dscm) <- c("Cluster", "Variable", "Value")
+dscm$Cluster <- factor(dscm$Cluster)
+dscm$Order <- as.vector(sapply(1:length(numi), rep, nclust))
+p <- ggplot(dscm,
+            aes(x=reorder(Variable, Order),
+                y=Value, group=Cluster, colour=Cluster))
+p <- p + coord_polar()
+p <- p + geom_point()
+p <- p + geom_path()
+p <- p + labs(x=NULL, y=NULL)
+p <- p + ylim(-1, 1)
+p <- p + ggtitle("Clusters profile (variables were scaled)")
+p
+```
